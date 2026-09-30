@@ -1,0 +1,97 @@
+gps+gsm+buzz
+
+
+
+#include <SoftwareSerial.h>
+#include <TinyGPS++.h>
+
+SoftwareSerial gsm(9,10);   // RX, TX for GSM
+SoftwareSerial gps(4,3);    // RX, TX for GPS
+TinyGPSPlus gpsData;
+
+const int buzzerPin = 7;    // Buzzer connected to D7
+
+void setup() {
+  Serial.begin(9600);
+  gsm.begin(9600);
+  gps.begin(9600);
+  
+  pinMode(buzzerPin, OUTPUT);
+  digitalWrite(buzzerPin, LOW);
+
+  Serial.println("System ready. Type 'send' in Serial Monitor to send GPS location SMS to 2 numbers.");
+  delay(2000);
+
+  gsm.println("AT");
+  delay(500);
+  gsm.println("AT+CMGF=1");
+  delay(500);
+}
+
+void loop() {
+  // Forward GSM responses to Serial
+  if (gsm.available()) {
+    Serial.write(gsm.read());
+  }
+
+  // Check for manual command via Serial
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+
+    if (input.equalsIgnoreCase("send")) {
+      Serial.println("Manual trigger received. Fetching GPS location...");
+
+      // Activate buzzer for 2 seconds
+      digitalWrite(buzzerPin, HIGH);
+      delay(1000);
+      digitalWrite(buzzerPin, LOW);
+
+      sendLocationSMS();
+    }
+  }
+
+  // Keep updating GPS data
+  while (gps.available() > 0) {
+    gpsData.encode(gps.read());
+  }
+}
+
+void sendLocationSMS() {
+  if (gpsData.location.isValid()) {
+    float lat = gpsData.location.lat();
+    float lng = gpsData.location.lng();
+
+    Serial.print("Latitude: "); Serial.println(lat, 6);
+    Serial.print("Longitude: "); Serial.println(lng, 6);
+
+    String message = "I'm in trouble! My location: ";
+    message += "http://maps.google.com/?q=";
+    message += String(lat, 6);
+    message += ",";
+    message += String(lng, 6);
+
+    // Send to both numbers
+    sendSMS("+918623824996", message);  // 1st number
+    delay(5000); // wait before sending to 2nd
+    sendSMS("+919113009515", message);  // 2nd number
+
+    Serial.println("✅ SMS sent to both numbers!");
+  } else {
+    Serial.println("⚠️ No valid GPS data yet. Wait for fix and try again.");
+  }
+}
+
+void sendSMS(String number, String msg) {
+  gsm.println("AT+CMGF=1");
+  delay(1000);
+  gsm.print("AT+CMGS=\"");
+  gsm.print(number);
+  gsm.println("\"");
+  delay(1500);
+  gsm.print(msg);
+  delay(1000);
+  gsm.write(26); // Auto Ctrl+Z
+  delay(5000);
+  Serial.print("[SMS sent to "); Serial.print(number); Serial.println("]");
+}
